@@ -1,6 +1,7 @@
 import streamlit as st
 import numpy as np
 from solver import GranM
+from graph import generar_grafico_2d
 
 st.set_page_config(page_title="Optimizador PL", layout="wide")
 
@@ -156,10 +157,11 @@ if st.button("Resolver Problema", type="primary"): # Disparador principal para e
                 st.subheader("Solución Óptima Directa") 
                 st.info("Aquí se desplegará únicamente el resultado final óptimo (Valor de Z*, X* y holguras/excesos).") 
 
-        with tab_grafico: 
-            if n_vars == 2: # Verificación del número de variables de decisión
-                st.subheader("Gráfica del Área Factible (2D)")
-                st.info("Aquí renderizaremos la región factible sombreada, vértices evaluados y recta de isoutilidad.") 
+        with tab_grafico:
+            if n_vars == 2: # Verificación del número de variables de decisión (n = 2)
+                            st.subheader("Gráfica del Área Factible (2D)")
+                            fig_2d = generar_grafico_2d(tipo_objetivo, coef_z, restricciones, permitir_negativos=permitir_negativos) # Genera la figura en Matplotlib
+                            st.pyplot(fig_2d) # Renderiza la figura interactiva directamente en Streamlit
             else: # Si n > 2 variables de decisión
                 st.warning("El método gráfico no aplica para problemas con más de 2 variables de decisión.") 
 
