@@ -84,4 +84,4 @@ python3 app.py
 ## Equipo de Desarrollo
 
 * **Jonatan Andrés Bedoya Zapata**
-* **Sergio Idarraga**
+* **Sergio Idárraga**
