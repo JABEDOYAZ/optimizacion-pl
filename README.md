@@ -1,110 +1,87 @@
-# Aplicación de Programación Lineal — Método de la Gran M y Simplex Revisado
+# Aplicación de Programación Lineal (Optimización I)
 
-**Autor:** Jonatan Andrés Bedoya Zapata
+Aplicación de escritorio desarrollada en Python con interfaz gráfica nativa (**Tkinter**) para formular, validar y resolver problemas de Programación Lineal mediante el **Método de la Gran M** y el **Método Gráfico (2D)**, incluyendo soporte para aritmética con fracciones exactas.
 
----
-
-## Descripción del Proyecto
-
-Esta aplicación es una herramienta web interactiva desarrollada íntegramente en **Python** utilizando **Streamlit**, diseñada para la formulación, resolución y análisis didáctico de problemas de **Programación Lineal (PL)**.
-
-La aplicación permite resolver modelos de optimización ($MAX$ y $MIN$) mediante una implementación propia del **Método de la Gran M** y del **Método Simplex Revisado**, mostrando tanto la solución directa como el desarrollo detallado paso a paso (forma estándar, prueba de la razón mínima, variables entrantes/salientes, pivotes y tableros iterativos con fracciones exactas).
+Proyecto desarrollado para la asignatura **Optimización I** — Facultad de Ingeniería, Departamento de Ingeniería de Sistemas, **Universidad de Antioquia**.
 
 ---
 
-## Requisitos del Sistema y Dependencias
+## Características Principales
 
-### Prerrequisitos
-* **Sistema Operativo:** Linux (Ubuntu/Mint), macOS o Windows.
-* **Python:** Versión `3.10` o superior.
-* **Git:** Para el control de versiones.
-
-### Librerías de Python requeridas
-* `streamlit` — Interfaz gráfica web interactiva.
-* `numpy` — Manejo y operaciones matriciales.
-* `matplotlib` — Renderizado de la región factible y gráficos 2D.
-* `sympy` — Operaciones simbólicas.
+* **Interfaz Gráfica Guiada (Tkinter):** Flujo de ingreso por etapas con validación progresiva, edición dinámica del modelo sin reiniciar la aplicación y visualización organizada por pestañas.
+* **Validación Estricta del Modelo:** Verificación automática de coeficientes no nulos en la función objetivo ($c_j \neq 0$), restricciones no vacías, cobertura de variables en la matriz $A$, lados derechos de cualquier signo y control de no negatividad ($X_j \ge 0$ o variables libres).
+* **Forma Estándar y Gran M Exacto:** Conversión automática de desigualdades ($\le, \ge, =$) mediante variables de holgura ($s_i$), exceso ($e_i$) y artificiales ($a_i$) utilizando aritmética exacta (`fractions.Fraction`).
+* **Método Gráfico 2D (`n = 2`):** Renderizado interactivo con Matplotlib que muestra la región factible sombreada, rectas de restricción rotuladas, evaluación de vértices, recta de isoutilidad/isocosto en el óptimo y detección matemática de problemas **infactibles** o **no acotados**.
+* **Persistencia en JSON:** Exportación de la configuración del modelo actual a formato `.json`.
 
 ---
 
-## Instalación y Configuración Local
-
-Sigue estos pasos en tu terminal para clonar y ejecutar el proyecto localmente:
-
-### 1. Clonar el repositorio
-```bash
-git clone https://github.com/JABEDOYAZ/optimizacion-pl.git
-cd optimizacion-pl
-```
-
-### 2. Crear y activar el entorno virtual
-En **Linux / macOS**:
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-En **Windows (PowerShell)**:
-```powershell
-python -m venv venv
-.\venv\Scripts\Activate.ps1
-```
-
-### 3. Instalar las dependencias
-```bash
-pip install --upgrade pip
-pip install streamlit numpy matplotlib sympy
-```
-
-*(Opcional: usando el archivo `requirements.txt`)*
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## Ejecución de la Aplicación
-
-Para iniciar el servidor local de Streamlit, ejecuta en la terminal activa:
-
-```bash
-streamlit run app.py
-```
-
-La aplicación se abrirá automáticamente en tu navegador web en la dirección:
-`http://localhost:8501`
-
-Para detener la ejecución de la aplicación en la terminal, presiona `Ctrl + C`.
-
-
----
-
-## 📁 Estructura del Código
+## Estructura del Proyecto
 
 ```text
 optimizacion-pl/
-├── app.py              # Interfaz de usuario interactiva (Streamlit)
-├── solver.py           # Algoritmo de solución (Gran M y Simplex Revisado)
-├── graph.py            # Módulo gráfico 2D para la región factible (n = 2)
-├── sensitivity.py      # Módulo para el análisis de sensibilidad y rangos
-├── README.md           # Documentación general del proyecto
-└── requirements.txt    # Lista de dependencias del proyecto
+├── app.py              # Interfaz gráfica de escritorio (Tkinter) y control de vistas
+├── validaciones.py     # Reglas de validación del modelo y serialización JSON
+├── solver.py           # Motor matemático: estandarización y Método de la Gran M
+├── graph.py            # Motor gráfico 2D (Matplotlib + NumPy)
+├── requirements.txt    # Dependencias externas de Python
+└── README.md           # Documentación de instalación y uso
 ```
 
 ---
 
-## Funcionalidades Implementadas
+## Requisitos Previos
 
-- [x] **Entrada y Validación:** Formulación general con $n$ variables, $m$ restricciones ($\le, \ge, =$), lados derechos de cualquier signo y opción de variables no restringidas de signo.
-- [x] **Forma Estándar:** Identificación de variables de holgura ($s_i$), exceso ($e_i$) y artificiales ($a_i$).
-- [x] **Diferenciación de Modos:** Selección entre *Solución directa* y *Paso a paso*.
-- [ ] **Tableros Iterativos (Gran M):** Mostrar prueba de razón mínima, variable entrante, saliente y elemento pivote.
-- [ ] **Método Gráfico ($n = 2$):** Región factible sombreada, vértices evaluados y recta de isoutilidad.
-- [ ] **Análisis de Sensibilidad:** Precios sombra, costos reducidos y rangos permisibles de variación.
-- [ ] **Casos Especiales:** Detección de infactibilidad, no acotamiento, soluciones múltiples y degeneración.
+1. **Python 3.10 o superior.**
+2. **Tkinter (paquete del sistema para interfaz gráfica):**
+   * **Linux Mint / Ubuntu / Debian:**
+     ```bash
+     sudo apt update
+     sudo apt install python3-tk -y
+     ```
+   * **Windows / macOS:** Viene incluido por defecto con el instalador oficial de Python.
+3. **Dependencias de Python:** `numpy`, `matplotlib` y `sympy`.
 
 ---
 
-## Licencia y Uso Académico
+## Instalación
 
-Este proyecto se desarrolla exclusivamente con fines académicos para la asignatura Optimización I de la Universidad de Antioquia.
+1. **Clonar el repositorio:**
+   ```bash
+   git clone [https://github.com/JABEDOYAZ/optimizacion-pl.git](https://github.com/JABEDOYAZ/optimizacion-pl.git)
+   cd optimizacion-pl
+   ```
+
+2. **Crear y activar un entorno virtual:**
+   * **En Linux Mint / macOS:**
+     ```bash
+     python3 -m venv venv
+     source venv/bin/activate
+     ```
+   * **En Windows (PowerShell):**
+     ```powershell
+     python -m venv venv
+     .\venv\Scripts\Activate.ps1
+     ```
+
+3. **Instalar las librerías requeridas:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+---
+
+## Ejecución
+
+Al tratarse de una aplicación de escritorio nativa construida con Tkinter, no requiere servidor web ni navegador. Con el entorno virtual activo, ejecuta desde la raíz del proyecto:
+
+```bash
+python3 app.py
+```
+
+---
+
+## Equipo de Desarrollo
+
+* **Jonatan Andrés Bedoya Zapata**
+* **Sergio Idarraga**
