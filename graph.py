@@ -172,7 +172,7 @@ def generar_grafico_2d(tipo_obj, coef_z, restricciones, permitir_negativos=False
 
     else: # Si no existen vértices factibles (Problema Infactible)
         ax.text(
-            0.5, 0.5, "❌ Región Factible Vacía / Sin Solución", # Texto en el centro de la gráfica
+            0.5, 0.5, "❌ No tiene solución factible", # Texto en el centro de la gráfica
             transform=ax.transAxes, 
             ha='center', va='center', 
             fontsize=14, color='red', weight='bold',
