@@ -1,300 +1,305 @@
-import streamlit as st
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+
 from solver import GranM
 from graph import generar_grafico_2d
 from validaciones import validar_funcion_objetivo, validar_restricciones, generar_json_modelo
 
-st.set_page_config(page_title="Optimizador PL", layout="wide")
 
-st.title("Aplicación de Programación Lineal")
-st.markdown(" Hecho por Jonatan Bedoya y Sergio Idarraga")
+class AplicacionPL:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Aplicación de Programación Lineal")
+        self.root.geometry("1050x720")
 
-# ---------------------------------------------------------
-# INICIALIZACIÓN DEL ESTADO DE LA SESIÓN (Persistencia de datos)
-# ---------------------------------------------------------
-if "vista" not in st.session_state:
-    st.session_state.vista = "formulacion"  # Controla si se muestra 'formulacion' o 'resultados'
+        # Variables de control de la interfaz
+        self.tipo_obj_var = tk.StringVar(value="MAXIMIZAR")
+        self.n_vars_var = tk.IntVar(value=2)
+        self.m_cons_var = tk.IntVar(value=3)
+        self.permitir_neg_var = tk.BooleanVar(value=False)
+        self.modo_sol_var = tk.StringVar(value="Paso a paso")
+        self.fracciones_var = tk.BooleanVar(value=True)
 
-if "paso_manual" not in st.session_state:
-    st.session_state.paso_manual = 1  # Controla el avance progresivo (1: Z, 2: Restricciones, 3: Opciones)
+        # Listas para guardar las referencias a las cajas de texto (Entry / Combobox)
+        self.entradas_z = []
+        self.entradas_restricciones = []
+        self.modelo_actual = {}
 
-if "modelo" not in st.session_state:
-    st.session_state.modelo = {
-        "tipo_objetivo": "MAXIMIZAR",
-        "n_vars": 2,
-        "m_cons": 3,
-        "coef_z": [0.0, 0.0],
-        "restricciones": [
-            {"coefs": [1.0, 0.0], "signo": "<=", "b": 10.0},
-            {"coefs": [0.0, 1.0], "signo": "<=", "b": 10.0},
-            {"coefs": [0.0, 0.0], "signo": "<=", "b": 10.0},
-        ],
-        "permitir_negativos": False,
-        "modo_solucion": "Paso a paso",
-        "mostrar_fracciones": True,
-    }
+        # Contenedor principal dinámico (cambia entre Formulación y Resultados)
+        self.contenedor_principal = tk.Frame(self.root, padx=15, pady=15)
+        self.contenedor_principal.pack(fill="both", expand=True)
 
+        self.mostrar_vista_formulacion()
 
-def ajustar_dimensiones_modelo(n_vars, m_cons):
-    """Ajusta el tamaño de las listas guardadas en memoria si el usuario cambia n o m."""
-    # Ajustar lista de coeficientes Z
-    coef_z = st.session_state.modelo["coef_z"]
-    if len(coef_z) < n_vars:
-        coef_z.extend([0.0] * (n_vars - len(coef_z)))
-    else:
-        coef_z = coef_z[:n_vars]
-    st.session_state.modelo["coef_z"] = coef_z
+    def limpiar_contenedor(self):
+        """Elimina los widgets actuales antes de cambiar de vista."""
+        for widget in self.contenedor_principal.winfo_children():
+            widget.destroy()
 
-    # Ajustar matriz de restricciones
-    restricciones = st.session_state.modelo["restricciones"]
-    if len(restricciones) < m_cons:
-        for i in range(len(restricciones), m_cons):
-            fila = [1.0 if i == j else 0.0 for j in range(n_vars)]
-            restricciones.append({"coefs": fila, "signo": "<=", "b": 10.0})
-    else:
-        restricciones = restricciones[:m_cons]
+    # =========================================================
+    # VISTA 1: FORMULACIÓN DEL MODELO POR ETAPAS
+    # =========================================================
+    def mostrar_vista_formulacion(self):
+        self.limpiar_contenedor()
 
-    for i, r in enumerate(restricciones):
-        if len(r["coefs"]) < n_vars:
-            r["coefs"].extend([0.0] * (n_vars - len(r["coefs"])))
-        else:
-            r["coefs"] = r["coefs"][:n_vars]
+        tk.Label(
+            self.contenedor_principal,
+            text="Definición del Modelo de Programación Lineal",
+            font=("Arial", 16, "bold")
+        ).pack(anchor="w", pady=(0, 10))
 
-    st.session_state.modelo["restricciones"] = restricciones
+        # --- ETAPA 1: Objetivo, n, m y Función Objetivo ---
+        frame_etapa1 = tk.LabelFrame(self.contenedor_principal, text="1. Configuración General y Función Objetivo", padx=10, pady=10)
+        frame_etapa1.pack(fill="x", pady=5)
 
+        fila_dim = tk.Frame(frame_etapa1)
+        fila_dim.pack(fill="x", pady=5)
 
-# =========================================================
-# VISTA 1: FORMULACIÓN DEL MODELO
-# =========================================================
-if st.session_state.vista == "formulacion":
+        tk.Label(fila_dim, text="Objetivo:").pack(side="left", padx=5)
+        ttk.Combobox(fila_dim, textvariable=self.tipo_obj_var, values=["MAXIMIZAR", "MINIMIZAR"], state="readonly", width=12).pack(side="left", padx=5)
 
-    # Selección inicial limpia: Manual vs JSON
-    metodo_ingreso = st.radio(
-        "Selecciona cómo deseas iniciar:",
-        ["Ingresar formulación manualmente", "Cargar desde archivo JSON"],
-        horizontal=True
-    )
-    st.divider()
+        tk.Label(fila_dim, text="Variables (n):").pack(side="left", padx=5)
+        tk.Spinbox(fila_dim, from_=2, to=10, textvariable=self.n_vars_var, width=5).pack(side="left", padx=5)
 
-    # -----------------------------------------------------
-    # OPCIÓN A: CARGA POR ARCHIVO JSON (Pendiente de lógica)
-    # -----------------------------------------------------
-    if metodo_ingreso == "Cargar desde archivo JSON":
-        st.subheader("Cargar problema desde archivo (.json)")
-        archivo_json = st.file_uploader("Selecciona un archivo JSON válido", type=["json"])
-        if archivo_json is not None:
-            st.info("Archivo recibido. La lectura automática de JSON se implementará en el siguiente paso.")
+        tk.Label(fila_dim, text="Restricciones (m):").pack(side="left", padx=5)
+        tk.Spinbox(fila_dim, from_=1, to=15, textvariable=self.m_cons_var, width=5).pack(side="left", padx=5)
 
-    # -----------------------------------------------------
-    # OPCIÓN B: FORMULACIÓN MANUAL POR PASOS
-    # -----------------------------------------------------
-    else:
-        mod = st.session_state.modelo
+        tk.Button(fila_dim, text="Generar campos de Z", command=self.construir_campos_z).pack(side="left", padx=15)
 
-        # --- ETAPA 1: Objetivo, Dimensiones y Función Objetivo ---
-        st.subheader("1. Definición General y Función Objetivo")
-        col_type, col_vars, col_cons = st.columns(3)
+        # Subcontenedor donde se dibujan los coeficientes c_j
+        self.frame_z = tk.Frame(frame_etapa1)
+        self.frame_z.pack(fill="x", pady=8)
+        self.construir_campos_z()
 
-        with col_type:
-            idx_obj = 0 if mod["tipo_objetivo"] == "MAXIMIZAR" else 1
-            tipo_objetivo = st.selectbox("Objetivo:", ["MAXIMIZAR", "MINIMIZAR"], index=idx_obj)
+        tk.Button(
+            frame_etapa1,
+            text="Continuar a Restricciones ➡️",
+            bg="#1f77b4", fg="white",
+            command=self.validar_y_abrir_etapa2
+        ).pack(anchor="e", pady=5)
 
-        with col_vars:
-            n_vars = st.number_input("Número de Variables (n):", min_value=2, max_value=10, value=int(mod["n_vars"]), step=1)
+        # --- ETAPA 2: Matriz de Restricciones (se habilita al validar Z) ---
+        self.frame_etapa2 = tk.LabelFrame(self.contenedor_principal, text="2. Restricciones (Sujeto a) y Signo de Variables", padx=10, pady=10)
 
-        with col_cons:
-            m_cons = st.number_input("Número de Restricciones (m):", min_value=1, max_value=15, value=int(mod["m_cons"]), step=1)
+        # --- ETAPA 3: Opciones de Salida y Resolver (se habilita al validar Restricciones) ---
+        self.frame_etapa3 = tk.LabelFrame(self.contenedor_principal, text="3. Modo de Solución", padx=10, pady=10)
 
-        # Si el usuario modificó n o m, redimensionamos la memoria y reiniciamos el paso de validación
-        if n_vars != mod["n_vars"] or m_cons != mod["m_cons"]:
-            mod["n_vars"] = int(n_vars)
-            mod["m_cons"] = int(m_cons)
-            ajustar_dimensiones_modelo(int(n_vars), int(m_cons))
-            st.session_state.paso_manual = 1
+    def construir_campos_z(self):
+        """Crea dinámicamente las cajas de entrada para c_1, c_2, ..., c_n."""
+        for w in self.frame_z.winfo_children():
+            w.destroy()
+        self.entradas_z.clear()
 
-        mod["tipo_objetivo"] = tipo_objetivo
+        tk.Label(self.frame_z, text="Z = ", font=("Arial", 10, "bold")).pack(side="left")
+        n = self.n_vars_var.get()
+        for j in range(n):
+            entry = tk.Entry(self.frame_z, width=7, justify="center")
+            entry.insert(0, "0")
+            entry.pack(side="left", padx=3)
+            self.entradas_z.append(entry)
 
-        st.markdown("**Coeficientes de la Función Objetivo Z:**")
-        cols_f_obj = st.columns(int(n_vars))
-        coef_z_actual = []
-        for j in range(int(n_vars)):
-            with cols_f_obj[j]:
-                val = st.number_input(f"c_{j+1} (X{j+1})", value=float(mod["coef_z"][j]), key=f"z_{j}")
-                coef_z_actual.append(val)
-        mod["coef_z"] = coef_z_actual
+            etiqueta = f"X{j+1} + " if j < n - 1 else f"X{j+1}"
+            tk.Label(self.frame_z, text=etiqueta).pack(side="left")
 
-        # Botón Continuar (Etapa 1 -> Etapa 2)
-        if st.button("Continuar", key="btn_continuar_1"):
-            valido_z, msg_z = validar_funcion_objetivo(coef_z_actual)
-            if valido_z:
-                st.session_state.paso_manual = max(st.session_state.paso_manual, 2)
-                st.rerun()
-            else:
-                st.error(msg_z)
+    def validar_y_abrir_etapa2(self):
+        """Valida los coeficientes de Z usando validaciones.py y despliega las restricciones."""
+        try:
+            coef_z = [float(e.get()) for e in self.entradas_z]
+        except ValueError:
+            messagebox.showerror("Error de entrada", "Todos los coeficientes de Z deben ser valores numéricos.")
+            return
 
-        # --- ETAPA 2: Restricciones y Signo de Variables ---
-        if st.session_state.paso_manual >= 2:
-            st.divider()
-            st.subheader("2. Restricciones (Sujeto a) y Signo de Variables")
+        valido, msg = validar_funcion_objetivo(coef_z)
+        if not valido:
+            messagebox.showerror("Función Objetivo inválida", msg.replace("*", ""))
+            return
 
-            signos_opciones = ["<=", ">=", "="]
-            restricciones_actuales = []
+        # Limpiar y mostrar Etapa 2
+        for w in self.frame_etapa2.winfo_children():
+            w.destroy()
+        self.frame_etapa2.pack(fill="x", pady=5)
+        self.entradas_restricciones.clear()
 
-            for i in range(int(m_cons)):
-                cols_r = st.columns(int(n_vars) + 2)
-                row_coefs = []
+        grid_rest = tk.Frame(self.frame_etapa2)
+        grid_rest.pack(fill="x", pady=5)
 
-                for j in range(int(n_vars)):
-                    with cols_r[j]:
-                        val = st.number_input(
-                            f"a_{i+1}{j+1}",
-                            value=float(mod["restricciones"][i]["coefs"][j]),
-                            key=f"a_{i}_{j}"
-                        )
-                        row_coefs.append(val)
+        n = self.n_vars_var.get()
+        m = self.m_cons_var.get()
 
-                with cols_r[-2]:
-                    idx_signo = signos_opciones.index(mod["restricciones"][i]["signo"])
-                    signo = st.selectbox(f"Signo R{i+1}", signos_opciones, index=idx_signo, key=f"signo_{i}")
+        for i in range(m):
+            fila_entries = []
+            tk.Label(grid_rest, text=f"R{i+1}:", font=("Arial", 9, "bold")).grid(row=i, column=0, padx=5, pady=3)
+            col_actual = 1
 
-                with cols_r[-1]:
-                    b_val = st.number_input(f"b_{i+1}", value=float(mod["restricciones"][i]["b"]), key=f"b_{i}")
+            for j in range(n):
+                e_a = tk.Entry(grid_rest, width=7, justify="center")
+                e_a.insert(0, "1" if i == j else "0")
+                e_a.grid(row=i, column=col_actual, padx=2)
+                fila_entries.append(e_a)
+                col_actual += 1
 
-                restricciones_actuales.append({"coefs": row_coefs, "signo": signo, "b": b_val})
+                txt_var = f"X{j+1} +" if j < n - 1 else f"X{j+1}"
+                tk.Label(grid_rest, text=txt_var).grid(row=i, column=col_actual, padx=2)
+                col_actual += 1
 
-            mod["restricciones"] = restricciones_actuales
+            combo_signo = ttk.Combobox(grid_rest, values=["<=", ">=", "="], state="readonly", width=4)
+            combo_signo.set("<=")
+            combo_signo.grid(row=i, column=col_actual, padx=5)
+            col_actual += 1
 
-            # Restricción de signo de las variables
-            st.markdown("##### Restricción de Signo de las Variables")
-            permitir_negativos = st.checkbox(
-                "Permitir valores negativos en las variables de decisión (Variables no restringidas de signo)",
-                value=bool(mod["permitir_negativos"]),
-                help="Si está desmarcado, se asume la condición estándar X_j >= 0 para todas las variables."
-            )
-            mod["permitir_negativos"] = permitir_negativos
+            e_b = tk.Entry(grid_rest, width=8, justify="center")
+            e_b.insert(0, "10")
+            e_b.grid(row=i, column=col_actual, padx=5)
 
-            if not permitir_negativos:
-                st.caption("Condición activa: **X_j ≥ 0** para todo j = 1, ..., n")
-            else:
-                st.caption("Condición activa: Las variables de decisión **pueden ser negativas** (sin restricción de signo).")
+            self.entradas_restricciones.append((fila_entries, combo_signo, e_b))
 
-            # Botón Continuar (Etapa 2 -> Etapa 3)
-            if st.button("Continuar", key="btn_continuar_2"):
-                valido_z, msg_z = validar_funcion_objetivo(mod["coef_z"])
-                valido_r, errores_r = validar_restricciones(restricciones_actuales, int(n_vars))
+        tk.Checkbutton(
+            self.frame_etapa2,
+            text="Permitir valores negativos en las variables (Sin restricción de signo X_j >= 0)",
+            variable=self.permitir_neg_var
+        ).pack(anchor="w", pady=5)
 
-                if not valido_z:
-                    st.error(msg_z)
-                elif not valido_r:
-                    for err in errores_r:
-                        st.error(err)
-                else:
-                    st.session_state.paso_manual = max(st.session_state.paso_manual, 3)
-                    st.rerun()
+        tk.Button(
+            self.frame_etapa2,
+            text="Continuar a Opciones de Solución ➡️",
+            bg="#1f77b4", fg="white",
+            command=self.validar_y_abrir_etapa3
+        ).pack(anchor="e", pady=5)
 
-        # --- ETAPA 3: Opciones de Solución y Ejecución ---
-        if st.session_state.paso_manual >= 3:
-            st.divider()
-            st.subheader("3. Configuración de Salida")
+    def validar_y_abrir_etapa3(self):
+        """Valida la matriz A y RHS usando validaciones.py y muestra el botón Resolver."""
+        try:
+            coef_z = [float(e.get()) for e in self.entradas_z]
+            restricciones = []
+            for fila_entries, combo_signo, e_b in self.entradas_restricciones:
+                coefs = [float(e.get()) for e in fila_entries]
+                b_val = float(e_b.get())
+                restricciones.append({"coefs": coefs, "signo": combo_signo.get(), "b": b_val})
+        except ValueError:
+            messagebox.showerror("Error de entrada", "Todos los coeficientes y lados derechos deben ser numéricos.")
+            return
 
-            col_modo, col_frac = st.columns(2)
-            with col_modo:
-                idx_modo = 0 if mod["modo_solucion"] == "Paso a paso" else 1
-                mod["modo_solucion"] = st.radio("Modo de solución:", ["Paso a paso", "Solución directa"], index=idx_modo)
+        valido_z, msg_z = validar_funcion_objetivo(coef_z)
+        if not valido_z:
+            messagebox.showerror("Error en Z", msg_z.replace("*", ""))
+            return
 
-            with col_frac:
-                st.write("")  # Espaciado visual
-                mod["mostrar_fracciones"] = st.checkbox("Mostrar en fracciones exactas", value=bool(mod["mostrar_fracciones"]))
+        valido_r, errores_r = validar_restricciones(restricciones, self.n_vars_var.get())
+        if not valido_r:
+            messagebox.showerror("Error en Restricciones", "\n".join(errores_r).replace("*", ""))
+            return
 
-            if st.button("Resolver", type="primary"):
-                # Revalidación final antes de cambiar de vista (protege si el usuario editó algo arriba)
-                valido_z, msg_z = validar_funcion_objetivo(mod["coef_z"])
-                valido_r, errores_r = validar_restricciones(mod["restricciones"], int(n_vars))
+        # Guardamos el modelo validado en memoria
+        self.modelo_actual = {
+            "tipo_objetivo": self.tipo_obj_var.get(),
+            "n_vars": self.n_vars_var.get(),
+            "m_cons": self.m_cons_var.get(),
+            "coef_z": coef_z,
+            "restricciones": restricciones,
+            "permitir_negativos": self.permitir_neg_var.get(),
+        }
 
-                if not valido_z:
-                    st.error(msg_z)
-                elif not valido_r:
-                    for err in errores_r:
-                        st.error(err)
-                else:
-                    st.session_state.vista = "resultados"
-                    st.rerun()
+        for w in self.frame_etapa3.winfo_children():
+            w.destroy()
+        self.frame_etapa3.pack(fill="x", pady=5)
 
+        fila_opciones = tk.Frame(self.frame_etapa3)
+        fila_opciones.pack(fill="x")
 
-# =========================================================
-# VISTA 2: RESULTADOS DE LA OPTIMIZACIÓN
-# =========================================================
-elif st.session_state.vista == "resultados":
-    mod = st.session_state.modelo
+        tk.Radiobutton(fila_opciones, text="Paso a paso", variable=self.modo_sol_var, value="Paso a paso").pack(side="left", padx=10)
+        tk.Radiobutton(fila_opciones, text="Solución directa", variable=self.modo_sol_var, value="Solución directa").pack(side="left", padx=10)
+        tk.Checkbutton(fila_opciones, text="Mostrar en fracciones exactas", variable=self.fracciones_var).pack(side="left", padx=20)
 
-    # Barra superior de acciones: Volver a editar y Guardar JSON
-    col_volver, col_guardar, _ = st.columns([2, 2, 4])
-    with col_volver:
-        if st.button("⬅️ Editar modelo actual"):
-            st.session_state.vista = "formulacion"
-            st.rerun()
+        tk.Button(
+            fila_opciones,
+            text="Resolver Problema",
+            bg="#2ca02c", fg="white", font=("Arial", 10, "bold"),
+            command=self.mostrar_vista_resultados
+        ).pack(side="right", padx=10)
 
-    with col_guardar:
-        json_str = generar_json_modelo(mod)
-        st.download_button(
-            label="💾 Guardar el problema actual",
-            data=json_str,
-            file_name="modelo_programacion_lineal.json",
-            mime="application/json"
-        )
+    # =========================================================
+    # VISTA 2: RESULTADOS (PESTAÑAS)
+    # =========================================================
+    def mostrar_vista_resultados(self):
+        self.limpiar_contenedor()
+        mod = self.modelo_actual
 
-    st.divider()
+        # Barra superior: Editar modelo y Guardar JSON
+        barra_top = tk.Frame(self.contenedor_principal)
+        barra_top.pack(fill="x", pady=(0, 10))
 
-    # Instanciación del solver con los datos persistidos en session_state
-    solver = GranM(
-        mod["tipo_objetivo"],
-        mod["coef_z"],
-        mod["restricciones"],
-        permitir_negativos=mod["permitir_negativos"]
-    )
-    info_estandar = solver.estandarizar()
+        tk.Button(barra_top, text="⬅️ Editar modelo actual", command=self.mostrar_vista_formulacion).pack(side="left", padx=5)
+        tk.Button(barra_top, text="💾 Guardar problema (.json)", command=self.guardar_json).pack(side="left", padx=5)
 
-    # Pestañas de resultados
-    tab_pasos, tab_grafico, tab_sensibilidad = st.tabs([
-        "Solución / Paso a Paso",
-        "Método Gráfico",
-        "Análisis de Sensibilidad"
-    ])
+        # Ejecutar estandarización del solver
+        solver = GranM(mod["tipo_objetivo"], mod["coef_z"], mod["restricciones"], permitir_negativos=mod["permitir_negativos"])
+        info_estandar = solver.estandarizar()
 
-    with tab_pasos:
-        st.subheader(f"Modo Seleccionado: {mod['modo_solucion']}")
+        # Creación de pestañas (equivalente a st.tabs)
+        notebook = ttk.Notebook(self.contenedor_principal)
+        notebook.pack(fill="both", expand=True)
 
-        if mod["modo_solucion"] == "Paso a paso":
-            st.markdown("---")
-            st.subheader("1. Forma del Modelo")
-            st.write("**Variables identificadas:**", ", ".join(info_estandar["nombres_vars"]))
-            st.write("**Base Inicial:**", ", ".join(info_estandar["vars_basicas_iniciales"]))
+        tab_pasos = tk.Frame(notebook, padx=10, pady=10)
+        tab_grafico = tk.Frame(notebook, padx=10, pady=10)
+        tab_sensibilidad = tk.Frame(notebook, padx=10, pady=10)
 
-            st.markdown("##### Ecuaciones:")
+        notebook.add(tab_pasos, text="Solución / Paso a Paso")
+        notebook.add(tab_grafico, text="Método Gráfico")
+        notebook.add(tab_sensibilidad, text="Análisis de Sensibilidad")
+
+        # --- Contenido Pestaña 1: Paso a paso / Directa ---
+        texto_salida = tk.Text(tab_pasos, wrap="word", font=("Consolas", 10))
+        texto_salida.pack(fill="both", expand=True)
+
+        if self.modo_sol_var.get() == "Paso a paso":
+            texto_salida.insert("end", "=== 1. MODELO ===\n")
+            texto_salida.insert("end", f"Variables identificadas: {', '.join(info_estandar['nombres_vars'])}\n")
+            texto_salida.insert("end", f"Base Inicial: {', '.join(info_estandar['vars_basicas_iniciales'])}\n\n")
+            texto_salida.insert("end", "Ecuaciones:\n")
             for eq in info_estandar["forma_estandar"]:
-                st.code(eq, language="text")
-
-            st.markdown("---")
-            st.subheader("2. Iteraciones del Método Simplex (Gran M)")
-            st.info("Aquí se mostrarán las tablas iterativas paso a paso, mostrando variable entrante, prueba de la razón mínima, pivote y variable saliente.")
-
+                texto_salida.insert("end", f"  {eq}\n")
+            texto_salida.insert("end", "\n=== 2. ITERACIONES GRAN M ===\n(Pendiente de implementar iteraciones)")
         else:
-            st.markdown("---")
-            st.subheader("Solución Óptima Directa")
-            st.info("Aquí se desplegará únicamente el resultado final óptimo (Valor de Z*, X* y holguras/excesos).")
+            texto_salida.insert("end", "=== SOLUCIÓN ÓPTIMA DIRECTA ===\n(Aquí se mostrará Z*, X* y holguras)")
 
-    with tab_grafico:
+        texto_salida.config(state="disabled")  # Solo lectura
+
+        # --- Contenido Pestaña 2: Método Gráfico 2D ---
         if mod["n_vars"] == 2:
-            st.subheader("Gráfica del Área Factible (2D)")
             fig_2d = generar_grafico_2d(
                 mod["tipo_objetivo"],
                 mod["coef_z"],
                 mod["restricciones"],
                 permitir_negativos=mod["permitir_negativos"]
             )
-            st.pyplot(fig_2d)
+            canvas = FigureCanvasTkAgg(fig_2d, master=tab_grafico)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill="both", expand=True)
         else:
-            st.warning("El método gráfico no aplica para problemas con más de 2 variables de decisión.")
+            tk.Label(
+                tab_grafico,
+                text="⚠️ El método gráfico no aplica para problemas con más de 2 variables de decisión.",
+                font=("Arial", 12, "bold"), fg="#d9534f"
+            ).pack(pady=40)
 
-    with tab_sensibilidad:
-        st.subheader("Tabla de Sensibilidad")
-        st.info("Aquí se mostrarán precios sombra, costos reducidos y rangos permisibles de variación.")
+        # --- Contenido Pestaña 3: Análisis de Sensibilidad ---
+        tk.Label(tab_sensibilidad, text="Tabla de Análisis de Sensibilidad (En desarrollo)", font=("Arial", 11)).pack(pady=20)
+
+    def guardar_json(self):
+        """Abre un diálogo nativo para guardar el modelo actual en formato JSON."""
+        ruta = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("Archivos JSON", "*.json")],
+            initialfile="modelo_programacion_lineal.json"
+        )
+        if ruta:
+            with open(ruta, "w", encoding="utf-8") as f:
+                f.write(generar_json_modelo(self.modelo_actual))
+            messagebox.showinfo("Guardado", "El problema se guardó correctamente en formato JSON.")
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = AplicacionPL(root)
+    root.mainloop()
