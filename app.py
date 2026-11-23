@@ -6,7 +6,12 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from solver import GranM, TerminoM
 from graph import generar_grafico_2d
-from validaciones import validar_funcion_objetivo, validar_restricciones, generar_json_modelo
+from validaciones import (
+    parsear_numero,
+    validar_funcion_objetivo,
+    validar_restricciones,
+    generar_json_modelo
+)
 
 
 class AplicacionPL:
@@ -37,7 +42,10 @@ class AplicacionPL:
         self.mostrar_vista_formulacion()
 
     def limpiar_contenedor(self):
-        """Elimina los widgets actuales antes de cambiar de vista."""
+        """Elimina los widgets actuales y desvincula eventos globales de scroll antes de cambiar de vista."""
+        self.root.unbind_all("<Button-4>")
+        self.root.unbind_all("<Button-5>")
+        self.root.unbind_all("<MouseWheel>")
         for widget in self.contenedor_principal.winfo_children():
             widget.destroy()
 
@@ -58,6 +66,12 @@ class AplicacionPL:
             self.contenedor_principal,
             text="Definición del Modelo de Programación Lineal",
             font=("Arial", 16, "bold")
+        ).pack(anchor="w", pady=(0, 2))
+
+        tk.Label(
+            self.contenedor_principal,
+            text="ℹ️ Formatos numéricos admitidos: enteros (5), decimales con punto o coma (0.1 / 0,1) y fracciones (1/10).",
+            font=("Arial", 9, "italic"), fg="#444444"
         ).pack(anchor="w", pady=(0, 10))
 
         # --- ETAPA 1: Objetivo, n, m y Función Objetivo ---
@@ -123,7 +137,7 @@ class AplicacionPL:
 
     def al_cambiar_dimensiones(self):
         """Actualiza los campos de Z y reinicia las etapas inferiores si cambian n o m."""
-        self.modelo_actual = None  # Invalidamos caché previa al cambiar dimensiones
+        self.modelo_actual = None
         self.construir_campos_z()
         self.frame_etapa2.pack_forget()
         self.frame_etapa3.pack_forget()
@@ -138,7 +152,7 @@ class AplicacionPL:
         n = self.n_vars_var.get()
         for j in range(n):
             entry = tk.Entry(self.frame_z, width=8, justify="center")
-            val_inicial = f"{valores_previos[j]:g}" if (valores_previos and j < len(valores_previos)) else "0"
+            val_inicial = str(valores_previos[j]) if (valores_previos and j < len(valores_previos)) else "0"
             entry.insert(0, val_inicial)
             entry.pack(side="left", padx=3)
             self.entradas_z.append(entry)
@@ -149,9 +163,9 @@ class AplicacionPL:
     def validar_y_abrir_etapa2(self, restricciones_previas=None):
         """Valida los coeficientes de Z y despliega la matriz de restricciones."""
         try:
-            coef_z = [float(e.get()) for e in self.entradas_z]
+            coef_z = [parsear_numero(e.get()) for e in self.entradas_z]
         except ValueError:
-            messagebox.showerror("Error de entrada", "Todos los coeficientes de Z deben ser valores numéricos.")
+            messagebox.showerror("Error de entrada", "Todos los coeficientes de Z deben ser números válidos (ej. 5, 0.4, 0,4 o 2/5).")
             return
 
         valido, msg = validar_funcion_objetivo(coef_z)
@@ -180,7 +194,7 @@ class AplicacionPL:
             for j in range(n):
                 e_a = tk.Entry(grid_rest, width=8, justify="center")
                 if tiene_prev and j < len(restricciones_previas[i]["coefs"]):
-                    val_a = f"{restricciones_previas[i]['coefs'][j]:g}"
+                    val_a = str(restricciones_previas[i]["coefs"][j])
                 else:
                     val_a = "1" if i == j else "0"
                 e_a.insert(0, val_a)
@@ -198,7 +212,7 @@ class AplicacionPL:
             col_actual += 1
 
             e_b = tk.Entry(grid_rest, width=9, justify="center")
-            val_b = f"{restricciones_previas[i]['b']:g}" if tiene_prev else "10"
+            val_b = str(restricciones_previas[i]["b"]) if tiene_prev else "10"
             e_b.insert(0, val_b)
             e_b.grid(row=i, column=col_actual, padx=5)
 
@@ -217,30 +231,30 @@ class AplicacionPL:
             command=self.validar_y_abrir_etapa3
         ).pack(anchor="e", pady=5)
 
-    def validar_y_abrir_etapa3(self):
-        """Valida la matriz A y RHS y muestra las opciones de ejecución."""
+    def _recopilar_y_validar_modelo(self):
+        """Lee los widgets actuales de pantalla, valida todo el modelo y actualiza self.modelo_actual."""
         try:
-            coef_z = [float(e.get()) for e in self.entradas_z]
+            coef_z = [parsear_numero(e.get()) for e in self.entradas_z]
             restricciones = []
             for fila_entries, combo_signo, e_b in self.entradas_restricciones:
-                coefs = [float(e.get()) for e in fila_entries]
-                b_val = float(e_b.get())
+                coefs = [parsear_numero(e.get()) for e in fila_entries]
+                b_val = parsear_numero(e_b.get())
                 restricciones.append({"coefs": coefs, "signo": combo_signo.get(), "b": b_val})
         except ValueError:
-            messagebox.showerror("Error de entrada", "Todos los coeficientes y lados derechos deben ser numéricos.")
-            return
+            messagebox.showerror("Error de entrada", "Todos los coeficientes y lados derechos deben ser números válidos (ej. 5, 0.4, 0,4 o 2/5).")
+            return False
 
         valido_z, msg_z = validar_funcion_objetivo(coef_z)
         if not valido_z:
             messagebox.showerror("Error en Z", msg_z.replace("*", ""))
-            return
+            return False
 
         valido_r, errores_r = validar_restricciones(restricciones, self.n_vars_var.get())
         if not valido_r:
             messagebox.showerror("Error en Restricciones", "\n".join(errores_r).replace("*", ""))
-            return
+            return False
 
-        # Guardamos el modelo validado en memoria
+        # Actualiza siempre la memoria con lo que está actualmente en pantalla
         self.modelo_actual = {
             "tipo_objetivo": self.tipo_obj_var.get(),
             "n_vars": self.n_vars_var.get(),
@@ -249,6 +263,12 @@ class AplicacionPL:
             "restricciones": restricciones,
             "permitir_negativos": self.permitir_neg_var.get(),
         }
+        return True
+
+    def validar_y_abrir_etapa3(self):
+        """Valida el modelo completo y despliega las opciones de ejecución."""
+        if not self._recopilar_y_validar_modelo():
+            return
 
         for w in self.frame_etapa3.winfo_children():
             w.destroy()
@@ -265,12 +285,83 @@ class AplicacionPL:
             fila_opciones,
             text="🚀 Resolver Problema",
             bg="#2ca02c", fg="white", font=("Arial", 10, "bold"),
-            command=self.mostrar_vista_resultados
+            command=self.ejecutar_y_mostrar_resultados
         ).pack(side="right", padx=10)
+
+    def ejecutar_y_mostrar_resultados(self):
+        """Revalida cualquier edición reciente en pantalla antes de mostrar la vista de resultados."""
+        if self._recopilar_y_validar_modelo():
+            self.mostrar_vista_resultados()
 
     # =========================================================
     # VISTA 2: RESULTADOS (PESTAÑAS)
     # =========================================================
+    def _dibujar_resumen_solucion(self, padre, res, usar_frac):
+        """Renderiza la tarjeta con la respuesta óptima (Z*, X*, holguras/excesos y casos especiales)."""
+        frame_res = tk.LabelFrame(
+            padre,
+            text="Resultado Final de la Optimización",
+            padx=12, pady=10,
+            font=("Arial", 11, "bold")
+        )
+        frame_res.pack(fill="x", pady=10)
+
+        estado = res["estado"]
+
+        if estado == "INFACTIBLE":
+            tk.Label(
+                frame_res,
+                text=f"❌ {res['mensaje_estado']}",
+                fg="#d9534f", font=("Arial", 10, "bold"),
+                wraplength=950, justify="left"
+            ).pack(anchor="w")
+            return
+
+        if estado == "NO_ACOTADO":
+            tk.Label(
+                frame_res,
+                text=f"⚠️ {res['mensaje_estado']}",
+                fg="#d9534f", font=("Arial", 10, "bold"),
+                wraplength=950, justify="left"
+            ).pack(anchor="w")
+            return
+
+        # Estado ÓPTIMO: Mostrar Z*, variables de decisión y holguras/excesos
+        z_txt = TerminoM._fmt_num(res["valor_z"], usar_frac)
+        tk.Label(
+            frame_res,
+            text=f"✅ {res['mensaje_estado']}   |   Valor Óptimo Z* = {z_txt}",
+            fg="#1e7e34", font=("Arial", 11, "bold")
+        ).pack(anchor="w", pady=(0, 6))
+
+        # Valores de las variables de decisión X_1 .. X_n
+        vars_txt = "   |   ".join(
+            [f"{var} = {TerminoM._fmt_num(val, usar_frac)}" for var, val in res["solucion_x"].items()]
+        )
+        tk.Label(frame_res, text=f"Variables de decisión:   {vars_txt}", font=("Consolas", 10, "bold")).pack(anchor="w", pady=3)
+
+        # Alertas de casos especiales (Soluciones múltiples / Degeneración)
+        if res["es_multiple"]:
+            msg_mult = f"ℹ️ Soluciones óptimas múltiples detectadas (variable(s) no básica(s) con costo reducido 0: {', '.join(res['vars_alternativas'])})."
+            if res["solucion_alternativa"]:
+                alt_txt = ", ".join([f"{k} = {TerminoM._fmt_num(v, usar_frac)}" for k, v in res["solucion_alternativa"].items()])
+                msg_mult += f"\n   Vértice óptimo alternativo encontrado: ({alt_txt}) con el mismo Z* = {z_txt}."
+            tk.Label(frame_res, text=msg_mult, fg="#0056b3", font=("Arial", 9, "bold"), justify="left").pack(anchor="w", pady=4)
+
+        if res["es_degenerado"]:
+            tk.Label(
+                frame_res,
+                text="ℹ️ Solución degenerada: al menos una variable básica tomó valor igual a 0 (o hubo empate en la razón mínima).",
+                fg="#856404", font=("Arial", 9, "bold")
+            ).pack(anchor="w", pady=4)
+
+        # Tabla de Holguras y Excesos por restricción
+        tk.Label(frame_res, text="Estado de las Restricciones (Holguras / Excesos):", font=("Arial", 9, "bold")).pack(anchor="w", pady=(6, 2))
+        for item in res["detalle_restricciones"]:
+            val_r = TerminoM._fmt_num(item["valor"], usar_frac)
+            linea = f"  • {item['restriccion']} ({item['tipo']}): {item['variable']} = {val_r}"
+            tk.Label(frame_res, text=linea, font=("Consolas", 9)).pack(anchor="w")
+
     def mostrar_vista_resultados(self):
         self.limpiar_contenedor()
         mod = self.modelo_actual
@@ -283,15 +374,15 @@ class AplicacionPL:
         tk.Button(barra_top, text="⬅️ Editar modelo actual", command=self.mostrar_vista_formulacion).pack(side="left", padx=5)
         tk.Button(barra_top, text="💾 Guardar problema (.json)", command=self.guardar_json).pack(side="left", padx=5)
 
-        # Ejecutar estandarización y obtener Iteración 0
+        # Ejecutar el algoritmo completo de la Gran M
         solver = GranM(
             mod["tipo_objetivo"],
             mod["coef_z"],
             mod["restricciones"],
             permitir_negativos=mod["permitir_negativos"]
         )
-        info_estandar = solver.estandarizar()
-        iter0 = solver.generar_iteracion_0()
+        res = solver.resolver(usar_fracciones=usar_frac)
+        info_estandar = res["info_estandar"]
 
         # Pestañas de salida
         notebook = ttk.Notebook(self.contenedor_principal)
@@ -305,13 +396,46 @@ class AplicacionPL:
         notebook.add(tab_grafico, text="Método Gráfico")
         notebook.add(tab_sensibilidad, text="Análisis de Sensibilidad")
 
-        # --- Contenido Pestaña 1: Forma Estándar e Iteración 0 ---
+        # --- Contenido Pestaña 1: Paso a paso o Solución directa ---
         if self.modo_sol_var.get() == "Paso a paso":
-            # Bloque de texto superior: Forma estándar y preparación de Ecuación (0)
-            texto_info = tk.Text(tab_pasos, height=11, wrap="word", font=("Consolas", 10))
+            canvas_scroll = tk.Canvas(tab_pasos, highlightthickness=0)
+            scrollbar_y = ttk.Scrollbar(tab_pasos, orient="vertical", command=canvas_scroll.yview)
+            frame_scrollable = tk.Frame(canvas_scroll)
+
+            frame_scrollable.bind(
+                "<Configure>",
+                lambda e: canvas_scroll.configure(scrollregion=canvas_scroll.bbox("all"))
+            )
+            win_id = canvas_scroll.create_window((0, 0), window=frame_scrollable, anchor="nw")
+            canvas_scroll.bind(
+                "<Configure>",
+                lambda e: canvas_scroll.itemconfig(win_id, width=e.width)
+            )
+            canvas_scroll.configure(yscrollcommand=scrollbar_y.set)
+
+            # Desplazamiento seguro con rueda del ratón (Linux y Windows/macOS)
+            def _on_mousewheel(event):
+                if not canvas_scroll.winfo_exists():
+                    return
+                if event.num == 4:
+                    canvas_scroll.yview_scroll(-1, "units")
+                elif event.num == 5:
+                    canvas_scroll.yview_scroll(1, "units")
+                elif event.delta:
+                    canvas_scroll.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+            self.root.bind_all("<Button-4>", _on_mousewheel)
+            self.root.bind_all("<Button-5>", _on_mousewheel)
+            self.root.bind_all("<MouseWheel>", _on_mousewheel)
+
+            canvas_scroll.pack(side="left", fill="both", expand=True)
+            scrollbar_y.pack(side="right", fill="y")
+
+            # 1. Forma estándar y preparación de Ecuación (0)
+            texto_info = tk.Text(frame_scrollable, height=9, wrap="word", font=("Consolas", 10))
             texto_info.pack(fill="x", pady=(0, 10))
 
-            texto_info.insert("end", "=== 1. FORMA ESTÁNDAR DEL MODELO ===\n")
+            texto_info.insert("end", f"=== 1. FORMA ESTÁNDAR DEL MODELO ({mod['tipo_objetivo']}) ===\n")
             texto_info.insert(
                 "end",
                 f"Variables: {', '.join(info_estandar['nombres_vars'])}  |  "
@@ -320,105 +444,100 @@ class AplicacionPL:
             for idx, eq in enumerate(info_estandar["forma_estandar"], start=1):
                 texto_info.insert("end", f"  ({idx}) {eq}\n")
 
-            if iter0["operaciones_eliminacion"]:
+            if res["operaciones_eliminacion"]:
                 texto_info.insert("end", "\n=== 2. PREPARACIÓN DE ECUACIÓN (0) (ELIMINACIÓN DE ARTIFICIALES) ===\n")
-                for op in iter0["operaciones_eliminacion"]:
+                for op in res["operaciones_eliminacion"]:
                     texto_info.insert("end", f"  {op}\n")
 
             texto_info.config(state="disabled")
 
-            # Encabezado de la tabla Iteración = 0
-            tk.Label(
-                tab_pasos, text="Iteración = 0",
-                font=("Arial", 12, "bold"), fg="#1f77b4"
-            ).pack(anchor="w", pady=(5, 2))
-
-            # Contenedor de tabla con barra de desplazamiento horizontal
-            frame_tabla = tk.Frame(tab_pasos)
-            frame_tabla.pack(fill="x", pady=5)
-
-            columnas = ["Ec #", "VB", "Z"] + iter0["nombres_vars"] + ["Lado derecho", "Razón"]
-            tabla_tree = ttk.Treeview(
-                frame_tabla,
-                columns=columnas,
-                show="headings",
-                height=len(iter0["vars_basicas"]) + 1
-            )
-
-            scroll_x = ttk.Scrollbar(frame_tabla, orient="horizontal", command=tabla_tree.xview)
-            tabla_tree.configure(xscrollcommand=scroll_x.set)
-
-            for col in columnas:
-                tabla_tree.heading(col, text=col)
-                ancho = 55 if col in ["Ec #", "VB", "Z"] else (120 if col == "Lado derecho" else 90)
-                tabla_tree.column(col, width=ancho, minwidth=ancho, anchor="center", stretch=False)
-
-            # Fila (0): Función Objetivo
-            vals_f0 = (
-                ["(0)", "Z", "-1"]
-                + [t.formatear(usar_frac) for t in iter0["fila_0_coefs"]]
-                + [iter0["fila_0_rhs"].formatear(usar_frac), "-"]
-            )
-            tabla_tree.insert("", "end", values=vals_f0)
-
-            # Filas (1) .. (m): Restricciones
-            for i, r in enumerate(iter0["filas_restricciones"]):
-                vb = iter0["vars_basicas"][i]
-                coefs_txt = [TerminoM._fmt_num(c, usar_frac) for c in r["coefs"]]
-                rhs_txt = TerminoM._fmt_num(r["b"], usar_frac)
-                razon_val = iter0["razones"][i]
-                razon_txt = TerminoM._fmt_num(razon_val, usar_frac) if razon_val is not None else "-"
-
-                vals_fila = [f"({i+1})", vb, "0"] + coefs_txt + [rhs_txt, razon_txt]
-                tabla_tree.insert("", "end", values=vals_fila)
-
-            tabla_tree.pack(fill="x")
-            scroll_x.pack(fill="x")
-
-            # Resumen de criterios de pivoteo detectados en la Iteración 0
-            frame_pivote = tk.LabelFrame(
-                tab_pasos,
-                text="Criterios de Pivoteo (Iteración 0 → Iteración 1)",
-                padx=10, pady=8
-            )
-            frame_pivote.pack(fill="x", pady=10)
-
-            if iter0["var_entrante"] is None:
-                tk.Label(
-                    frame_pivote,
-                    text="✅ Ninguna variable mejora Z en la Ecuación (0). La Iteración 0 ya es óptima.",
-                    fg="green", font=("Arial", 10, "bold")
-                ).pack(anchor="w")
-            elif iter0["var_saliente"] is None:
-                tk.Label(
-                    frame_pivote,
-                    text=f"⚠️ Variable entrante: {iter0['var_entrante']}, pero no hay coeficientes positivos en su columna. Problema NO ACOTADO.",
-                    fg="red", font=("Arial", 10, "bold")
-                ).pack(anchor="w")
-            else:
-                razon_min_txt = TerminoM._fmt_num(iter0["menor_razon"], usar_frac)
-                piv_txt = TerminoM._fmt_num(iter0["elemento_pivote"], usar_frac)
-                resumen = (
-                    f"• Columna pivote (Variable que entra): {iter0['var_entrante']} (mayor valor absoluto entre las variables que mejoran Z)\n"
-                    f"• Fila pivote (Variable que sale): {iter0['var_saliente']} (Ec ({iter0['fila_pivote'] + 1}), razón mínima = {razon_min_txt})\n"
-                    f"• Elemento pivote: {piv_txt}"
+            # 2. Renderizar cada tablero iterativo (Iteración = 0, 1, 2, ...)
+            for tab in res["iteraciones"]:
+                num_it = tab["iteracion"]
+                frame_it = tk.LabelFrame(
+                    frame_scrollable,
+                    text=f"Iteración = {num_it}",
+                    font=("Arial", 11, "bold"),
+                    fg="#1f77b4",
+                    padx=8, pady=6
                 )
-                tk.Label(frame_pivote, text=resumen, justify="left", font=("Consolas", 10)).pack(anchor="w")
+                frame_it.pack(fill="x", pady=6)
+
+                columnas = ["Ec #", "VB", "Z"] + tab["nombres_vars"] + ["Lado derecho", "Razón"]
+                tabla_tree = ttk.Treeview(
+                    frame_it,
+                    columns=columnas,
+                    show="headings",
+                    height=len(tab["vars_basicas"]) + 1
+                )
+
+                scroll_x = ttk.Scrollbar(frame_it, orient="horizontal", command=tabla_tree.xview)
+                tabla_tree.configure(xscrollcommand=scroll_x.set)
+
+                for col in columnas:
+                    tabla_tree.heading(col, text=col)
+                    ancho = 55 if col in ["Ec #", "VB", "Z"] else (120 if col == "Lado derecho" else 90)
+                    tabla_tree.column(col, width=ancho, minwidth=ancho, anchor="center", stretch=False)
+
+                # Fila (0)
+                vals_f0 = (
+                    ["(0)", "Z", "-1"]
+                    + [t.formatear(usar_frac) for t in tab["fila_0_coefs"]]
+                    + [tab["fila_0_rhs"].formatear(usar_frac), "-"]
+                )
+                tabla_tree.insert("", "end", values=vals_f0)
+
+                # Filas (1) .. (m)
+                for i, r in enumerate(tab["filas_restricciones"]):
+                    vb = tab["vars_basicas"][i]
+                    coefs_txt = [TerminoM._fmt_num(c, usar_frac) for c in r["coefs"]]
+                    rhs_txt = TerminoM._fmt_num(r["b"], usar_frac)
+                    razon_val = tab["razones"][i]
+                    razon_txt = TerminoM._fmt_num(razon_val, usar_frac) if razon_val is not None else "-"
+
+                    vals_fila = [f"({i+1})", vb, "0"] + coefs_txt + [rhs_txt, razon_txt]
+                    tabla_tree.insert("", "end", values=vals_fila)
+
+                tabla_tree.pack(fill="x")
+                scroll_x.pack(fill="x")
+
+                # Justificación y operaciones de pivoteo de esta iteración
+                if tab["var_entrante"] is None:
+                    tk.Label(
+                        frame_it,
+                        text="→ Criterio de parada alcanzado: Ninguna variable mejora Z en la Ecuación (0).",
+                        fg="#1e7e34", font=("Arial", 9, "bold")
+                    ).pack(anchor="w", pady=(4, 0))
+                elif tab["var_saliente"] is None:
+                    tk.Label(
+                        frame_it,
+                        text=f"→ Entra {tab['var_entrante']}, pero no hay coeficientes positivos en su columna (Solución no acotada).",
+                        fg="#d9534f", font=("Arial", 9, "bold")
+                    ).pack(anchor="w", pady=(4, 0))
+                else:
+                    razon_min_txt = TerminoM._fmt_num(tab["menor_razon"], usar_frac)
+                    piv_txt = TerminoM._fmt_num(tab["elemento_pivote"], usar_frac)
+                    ops_txt = "\n   ".join(tab["operaciones_pivote"])
+                    detalle_piv = (
+                        f"• Entra: {tab['var_entrante']}  |  Sale: {tab['var_saliente']} (Ec ({tab['fila_pivote'] + 1}), razón mínima = {razon_min_txt})  |  Pivote: {piv_txt}\n"
+                        f"• Operaciones de Gauss-Jordan hacia Iteración {num_it + 1}:\n   {ops_txt}"
+                    )
+                    tk.Label(frame_it, text=detalle_piv, justify="left", font=("Consolas", 9)).pack(anchor="w", pady=(4, 0))
+
+            # 3. Resumen final al pie de todas las iteraciones
+            self._dibujar_resumen_solucion(frame_scrollable, res, usar_frac)
 
         else:
-            tk.Label(
-                tab_pasos,
-                text="Modo Solución Directa: Se habilitará al completar el bucle de iteraciones.",
-                font=("Arial", 11)
-            ).pack(pady=20)
+            # Modo Solución Directa: muestra únicamente el resultado final
+            self._dibujar_resumen_solucion(tab_pasos, res, usar_frac)
 
         # --- Contenido Pestaña 2: Método Gráfico 2D ---
         if mod["n_vars"] == 2:
             plt.close("all")
             fig_2d = generar_grafico_2d(
                 mod["tipo_objetivo"],
-                mod["coef_z"],
-                mod["restricciones"],
+                [float(c) for c in mod["coef_z"]],
+                [{"coefs": [float(a) for a in r["coefs"]], "signo": r["signo"], "b": float(r["b"])} for r in mod["restricciones"]],
                 permitir_negativos=mod["permitir_negativos"]
             )
             canvas = FigureCanvasTkAgg(fig_2d, master=tab_grafico)
