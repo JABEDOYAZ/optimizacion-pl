@@ -10,14 +10,15 @@ from validaciones import (
     parsear_numero,
     validar_funcion_objetivo,
     validar_restricciones,
-    generar_json_modelo
+    generar_json_modelo,
+    cargar_json_modelo
 )
 
 
 class AplicacionPL:
     def __init__(self, root):
         self.root = root
-        self.root.title("Aplicación de Programación Lineal - UdeA")
+        self.root.title("Aplicación de Programación Lineal")
         self.root.geometry("1100x750")
 
         # Intercepta el clic en la 'X' de la ventana para cerrar todo el proceso limpiamente
@@ -57,7 +58,7 @@ class AplicacionPL:
         sys.exit(0)
 
     # =========================================================
-    # VISTA 1: FORMULACIÓN DEL MODELO POR ETAPAS
+    # VISTA 1: FORMULACIÓN DEL MODELO (MANUAL O DESDE JSON)
     # =========================================================
     def mostrar_vista_formulacion(self):
         self.limpiar_contenedor()
@@ -70,9 +71,30 @@ class AplicacionPL:
 
         tk.Label(
             self.contenedor_principal,
-            text="ℹ️ Formatos numéricos admitidos: enteros (5), decimales con punto o coma (0.1 / 0,1) y fracciones (1/10).",
+            text="Formatos numéricos admitidos: enteros (5), decimales con punto o coma (0.1 / 0,1) y fracciones (1/10).",
             font=("Arial", 9, "italic"), fg="#444444"
-        ).pack(anchor="w", pady=(0, 10))
+        ).pack(anchor="w", pady=(0, 8))
+
+        # --- BARRA DE MODO DE INGRESO: ARCHIVO JSON VS MANUAL ---
+        frame_origen = tk.LabelFrame(
+            self.contenedor_principal,
+            text="Modo de Ingreso del Problema",
+            padx=10, pady=8
+        )
+        frame_origen.pack(fill="x", pady=(0, 6))
+
+        tk.Button(
+            frame_origen,
+            text="📂 Abrir problema desde archivo (.json)",
+            bg="#6f42c1", fg="white", font=("Arial", 9, "bold"),
+            command=self.abrir_json
+        ).pack(side="left", padx=5)
+
+        tk.Button(
+            frame_origen,
+            text="📝 Nuevo modelo manual (Limpiar campos)",
+            command=self.reiniciar_modelo_manual
+        ).pack(side="left", padx=10)
 
         # --- ETAPA 1: Objetivo, n, m y Función Objetivo ---
         frame_etapa1 = tk.LabelFrame(
@@ -107,7 +129,7 @@ class AplicacionPL:
         self.frame_z = tk.Frame(frame_etapa1)
         self.frame_z.pack(fill="x", pady=8)
 
-        # Si venimos de "Editar modelo actual", precargamos los coeficientes guardados
+        # Si venimos de "Editar modelo actual" o de cargar un JSON, precargamos los coeficientes
         valores_z_previos = self.modelo_actual["coef_z"] if self.modelo_actual else None
         self.construir_campos_z(valores_z_previos)
 
@@ -130,10 +152,44 @@ class AplicacionPL:
             padx=10, pady=10
         )
 
-        # Si el usuario pulsó "Editar modelo actual", desplegamos de inmediato Etapas 2 y 3 con sus datos
+        # Si existe un modelo cargado (por edición o desde JSON), desplegamos Etapas 2 y 3 con sus datos
         if self.modelo_actual:
             self.validar_y_abrir_etapa2(restricciones_previas=self.modelo_actual["restricciones"])
             self.validar_y_abrir_etapa3()
+
+    def abrir_json(self):
+        """Abre un archivo JSON, valida el modelo y lo carga directamente en la interfaz."""
+        ruta = filedialog.askopenfilename(
+            title="Seleccionar archivo de modelo (.json)",
+            filetypes=[("Archivos JSON", "*.json"), ("Todos los archivos", "*.*")]
+        )
+        if not ruta:
+            return
+
+        exito, resultado = cargar_json_modelo(ruta)
+        if not exito:
+            messagebox.showerror("Error al cargar JSON", resultado)
+            return
+
+        # Sincronizar variables de control de Tkinter con los datos del JSON
+        self.tipo_obj_var.set(resultado["tipo_objetivo"])
+        self.n_vars_var.set(resultado["n_vars"])
+        self.m_cons_var.set(resultado["m_cons"])
+        self.permitir_neg_var.set(resultado["permitir_negativos"])
+        self.modelo_actual = resultado
+
+        # Redibujar la vista con todas las etapas rellenas
+        self.mostrar_vista_formulacion()
+        messagebox.showinfo("Modelo cargado", "El archivo JSON se cargó correctamente. Puedes revisarlo o presionar 'Resolver Problema'.")
+
+    def reiniciar_modelo_manual(self):
+        """Limpia cualquier modelo cargado en memoria y reinicia el formulario manual."""
+        self.modelo_actual = None
+        self.tipo_obj_var.set("MAXIMIZAR")
+        self.n_vars_var.set(2)
+        self.m_cons_var.set(3)
+        self.permitir_neg_var.set(False)
+        self.mostrar_vista_formulacion()
 
     def al_cambiar_dimensiones(self):
         """Actualiza los campos de Z y reinicia las etapas inferiores si cambian n o m."""
@@ -254,7 +310,6 @@ class AplicacionPL:
             messagebox.showerror("Error en Restricciones", "\n".join(errores_r).replace("*", ""))
             return False
 
-        # Actualiza siempre la memoria con lo que está actualmente en pantalla
         self.modelo_actual = {
             "tipo_objetivo": self.tipo_obj_var.get(),
             "n_vars": self.n_vars_var.get(),
@@ -283,7 +338,7 @@ class AplicacionPL:
 
         tk.Button(
             fila_opciones,
-            text="🚀 Resolver Problema",
+            text="Resolver Problema",
             bg="#2ca02c", fg="white", font=("Arial", 10, "bold"),
             command=self.ejecutar_y_mostrar_resultados
         ).pack(side="right", padx=10)
@@ -297,7 +352,7 @@ class AplicacionPL:
     # VISTA 2: RESULTADOS (PESTAÑAS)
     # =========================================================
     def _dibujar_resumen_solucion(self, padre, res, usar_frac):
-        """Renderiza la tarjeta con la respuesta óptima (Z*, X*, holguras/excesos y casos especiales)."""
+        """Renderiza la tarjeta con la respuesta óptima (Z*, X* y alertas de casos especiales)."""
         frame_res = tk.LabelFrame(
             padre,
             text="Resultado Final de la Optimización",
@@ -326,7 +381,7 @@ class AplicacionPL:
             ).pack(anchor="w")
             return
 
-        # Estado ÓPTIMO: Mostrar Z*, variables de decisión y holguras/excesos
+        # Estado ÓPTIMO: Mostrar únicamente Z* y variables de decisión
         z_txt = TerminoM._fmt_num(res["valor_z"], usar_frac)
         tk.Label(
             frame_res,
@@ -334,13 +389,11 @@ class AplicacionPL:
             fg="#1e7e34", font=("Arial", 11, "bold")
         ).pack(anchor="w", pady=(0, 6))
 
-        # Valores de las variables de decisión X_1 .. X_n
         vars_txt = "   |   ".join(
             [f"{var} = {TerminoM._fmt_num(val, usar_frac)}" for var, val in res["solucion_x"].items()]
         )
         tk.Label(frame_res, text=f"Variables de decisión:   {vars_txt}", font=("Consolas", 10, "bold")).pack(anchor="w", pady=3)
 
-        # Alertas de casos especiales (Soluciones múltiples / Degeneración)
         if res["es_multiple"]:
             msg_mult = f"ℹ️ Soluciones óptimas múltiples detectadas (variable(s) no básica(s) con costo reducido 0: {', '.join(res['vars_alternativas'])})."
             if res["solucion_alternativa"]:
@@ -354,13 +407,6 @@ class AplicacionPL:
                 text="ℹ️ Solución degenerada: al menos una variable básica tomó valor igual a 0 (o hubo empate en la razón mínima).",
                 fg="#856404", font=("Arial", 9, "bold")
             ).pack(anchor="w", pady=4)
-
-        # Tabla de Holguras y Excesos por restricción
-        tk.Label(frame_res, text="Estado de las Restricciones (Holguras / Excesos):", font=("Arial", 9, "bold")).pack(anchor="w", pady=(6, 2))
-        for item in res["detalle_restricciones"]:
-            val_r = TerminoM._fmt_num(item["valor"], usar_frac)
-            linea = f"  • {item['restriccion']} ({item['tipo']}): {item['variable']} = {val_r}"
-            tk.Label(frame_res, text=linea, font=("Consolas", 9)).pack(anchor="w")
 
     def mostrar_vista_resultados(self):
         self.limpiar_contenedor()
@@ -413,7 +459,6 @@ class AplicacionPL:
             )
             canvas_scroll.configure(yscrollcommand=scrollbar_y.set)
 
-            # Desplazamiento seguro con rueda del ratón (Linux y Windows/macOS)
             def _on_mousewheel(event):
                 if not canvas_scroll.winfo_exists():
                     return
@@ -431,11 +476,11 @@ class AplicacionPL:
             canvas_scroll.pack(side="left", fill="both", expand=True)
             scrollbar_y.pack(side="right", fill="y")
 
-            # 1. Forma estándar y preparación de Ecuación (0)
+            # 1. Forma aumentada y preparación de Ecuación (0)
             texto_info = tk.Text(frame_scrollable, height=9, wrap="word", font=("Consolas", 10))
             texto_info.pack(fill="x", pady=(0, 10))
 
-            texto_info.insert("end", f"=== 1. FORMA ESTÁNDAR DEL MODELO ({mod['tipo_objetivo']}) ===\n")
+            texto_info.insert("end", f"=== 1. FORMA AUMENTADA DEL MODELO ({mod['tipo_objetivo']}) ===\n")
             texto_info.insert(
                 "end",
                 f"Variables: {', '.join(info_estandar['nombres_vars'])}  |  "
@@ -479,7 +524,6 @@ class AplicacionPL:
                     ancho = 55 if col in ["Ec #", "VB", "Z"] else (120 if col == "Lado derecho" else 90)
                     tabla_tree.column(col, width=ancho, minwidth=ancho, anchor="center", stretch=False)
 
-                # Fila (0)
                 vals_f0 = (
                     ["(0)", "Z", "-1"]
                     + [t.formatear(usar_frac) for t in tab["fila_0_coefs"]]
@@ -487,7 +531,6 @@ class AplicacionPL:
                 )
                 tabla_tree.insert("", "end", values=vals_f0)
 
-                # Filas (1) .. (m)
                 for i, r in enumerate(tab["filas_restricciones"]):
                     vb = tab["vars_basicas"][i]
                     coefs_txt = [TerminoM._fmt_num(c, usar_frac) for c in r["coefs"]]
@@ -501,7 +544,6 @@ class AplicacionPL:
                 tabla_tree.pack(fill="x")
                 scroll_x.pack(fill="x")
 
-                # Justificación y operaciones de pivoteo de esta iteración
                 if tab["var_entrante"] is None:
                     tk.Label(
                         frame_it,
