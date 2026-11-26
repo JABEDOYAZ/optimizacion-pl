@@ -1,3 +1,4 @@
+
 # Aplicación de Programación Lineal (Optimización I)
 
 Aplicación de escritorio desarrollada en Python con interfaz gráfica nativa (**Tkinter**) para formular, validar y resolver problemas de Programación Lineal mediante el **Método Simplex de la Gran M** y el **Método Gráfico (2D)**, con soporte para aritmética exacta mediante fracciones y arquitectura modular escalable a nuevos algoritmos (como Simplex Revisado y Análisis de Sensibilidad).
@@ -41,10 +42,11 @@ optimizacion-pl/
 1. **Python 3.10 o superior.**
 2. **Tkinter (paquete del sistema para interfaz gráfica):**
    * **Linux Mint / Ubuntu / Debian:**
-     ```bash
+```sh
      sudo apt update
      sudo apt install python3-tk -y
-     ```
+```
+
    * **Windows / macOS:** Viene incluido por defecto con el instalador oficial de Python.
 3. **Dependencias externas de Python:** `numpy` y `matplotlib`.
 
@@ -53,27 +55,28 @@ optimizacion-pl/
 ## Instalación
 
 1. **Clonar el repositorio:**
-   ```bash
+```sh
    git clone [https://github.com/JABEDOYAZ/optimizacion-pl.git](https://github.com/JABEDOYAZ/optimizacion-pl.git)
    cd optimizacion-pl
-   ```
+```
 
 2. **Crear y activar un entorno virtual:**
    * **En Linux Mint / macOS:**
-     ```bash
+```sh
      python3 -m venv venv
      source venv/bin/activate
-     ```
+```
+
    * **En Windows (PowerShell):**
-     ```powershell
+```powershell
      python -m venv venv
      .\venv\Scripts\Activate.ps1
-     ```
+```
 
 3. **Instalar las librerías requeridas:**
-   ```bash
+```sh
    pip install -r requirements.txt
-   ```
+```
 
 ---
 
@@ -81,7 +84,7 @@ optimizacion-pl/
 
 Con el entorno virtual activo, ejecuta desde la raíz del proyecto:
 
-```bash
+```sh
 python3 app.py
 ```
 
@@ -91,3 +94,4 @@ python3 app.py
 
 * **Jonatan Andrés Bedoya Zapata**
 * **Sergio Idárraga**
+* **Jose Albornoz**
